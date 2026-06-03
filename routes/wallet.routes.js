@@ -6,8 +6,8 @@ const router = express.Router();
 
 const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 const USDT_TRC20       = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TOPUP_TRX        = 5_000_000;
-const MIN_TRX          = 3_000_000;
+const TOPUP_TRX        = 15_000_000; // 15 TRX - energy ke liye kaafi
+const MIN_TRX          = 10_000_000; // 10 TRX minimum
 
 const getTronWeb = () => new TronWeb({
   fullHost: 'https://api.trongrid.io',
